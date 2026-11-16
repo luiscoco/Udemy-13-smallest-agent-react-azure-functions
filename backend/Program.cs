@@ -1,0 +1,11 @@
+using Microsoft.Azure.Functions.Worker.Builder;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using SmallestAgent.Functions;
+var builder = FunctionsApplication.CreateBuilder(args);
+builder.ConfigureFunctionsWebApplication();
+builder.Services.AddSingleton(_ => AgentSettings.Load(builder.Configuration, builder.Configuration["SMALLEST_AGENT_LOCAL_ROOT"] ?? builder.Environment.ContentRootPath));
+builder.Services.AddHttpClient("Claude", client => client.Timeout=TimeSpan.FromMinutes(3));
+builder.Services.AddSingleton<IAgentRunner, ClaudeAgentRunner>();
+builder.Services.AddSingleton<AgentEndpoints>();
+builder.Build().Run();

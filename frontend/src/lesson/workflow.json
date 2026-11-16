@@ -1,0 +1,162 @@
+[
+  {
+    "number": 1,
+    "title": "Run prompt",
+    "source": "frontend/src/AgentApp.tsx",
+    "line": 60,
+    "language": "typescript",
+    "text": "Lock and trim input before beginning asynchronous work.",
+    "explanation": "A React ref prevents duplicate submits immediately; the server independently checks untrusted input.",
+    "code": "const trimmed = prompt.trim();\nif (busy.current || !trimmed || trimmed.length > 4000) return;\nbusy.current = true;\nsetState('running'); setNotice(''); setResult(null); setPartial(''); setMessages([]); setError(''); setElapsed(0);\nconst started = performance.now();\ncontroller.current = new AbortController();"
+  },
+  {
+    "number": 2,
+    "title": "POST /api/agent/stream",
+    "source": "frontend/src/api.ts",
+    "line": 57,
+    "language": "typescript",
+    "text": "POST JSON to the public Functions origin or the development proxy.",
+    "explanation": "The browser sends an Entra bearer token only when public identity settings are configured; the Claude key never enters this client.",
+    "code": "const response = await authorizedFetch(apiUrl('/api/agent/stream'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt }), signal });"
+  },
+  {
+    "number": 3,
+    "title": "Validate bounded JSON input",
+    "source": "backend/AgentEndpoints.cs",
+    "line": 40,
+    "language": "csharp",
+    "text": "Validate media type and actual bytes before parsing.",
+    "explanation": "The 32 KiB limit applies while reading, independent of Content-Length. Strict JSON parsing and trimmed 1–4000 characters precede provider calls.",
+    "code": "public static async Task<string?> ReadPromptAsync(HttpContext context)\n{\n    var mediaType = context.Request.ContentType?.Split(';')[0].Trim();\n    if (!string.Equals(mediaType, \"application/json\", StringComparison.OrdinalIgnoreCase))\n    {\n        await ErrorAsync(context, 415, \"Use Content-Type: application/json.\"); return null;\n    }\n    using var buffer = new MemoryStream();\n    var bytes = new byte[4096];\n    int count;\n    while ((count = await context.Request.Body.ReadAsync(bytes, context.RequestAborted)) > 0)\n    {\n        if (buffer.Length + count > 32768)\n        {\n            await ErrorAsync(context, 413, \"Request body is too large.\"); return null;\n        }"
+  },
+  {
+    "number": 4,
+    "title": "Delegate HTTP trigger",
+    "source": "backend/AgentFunctions.cs",
+    "line": 30,
+    "language": "csharp",
+    "text": "A real .NET isolated HTTP trigger delegates transport work.",
+    "explanation": "The endpoint receives HttpContext through ASP.NET Core integration; no standalone Node or Minimal API server replaces Functions.",
+    "code": "    await endpoints.StreamAsync(request.HttpContext, cancellationToken);\n    return new EmptyResult();\n}"
+  },
+  {
+    "number": 5,
+    "title": "Create streaming model request",
+    "source": "backend/ClaudeAgentRunner.cs",
+    "line": 39,
+    "language": "csharp",
+    "text": "Call the official Anthropic C# Messages SDK.",
+    "explanation": "The typed parameters above this line specify one user prompt, max tokens, model, optional system instructions and no tools. There is no CLI subprocess.",
+    "code": "await foreach (var chunk in client.Messages.CreateStreaming(parameters, cancellationToken: cancellationToken))\n{\n    // Read the SDK's discriminated JSON union; never forward its raw object.\n    var data = JsonSerializer.SerializeToElement(chunk);\n    var type = data.GetProperty(\"type\").GetString();\n    if (type == \"message_start\" && data.TryGetProperty(\"message\", out var start) && start.TryGetProperty(\"usage\", out var usage))"
+  },
+  {
+    "number": 6,
+    "title": "Receive SDK stream chunks",
+    "source": "backend/ClaudeAgentRunner.cs",
+    "line": 26,
+    "language": "csharp",
+    "text": "The SDK manages the HTTPS exchange with Claude.",
+    "explanation": "This excerpt is the application request boundary. Provider transport is inside the official library; the diagram does not invent a raw HTTP call in application source.",
+    "code": "var parameters = new MessageCreateParams\n{\n    Model = settings.Model, MaxTokens = settings.MaxTokens,\n    Messages = [new UserMessageParam { Content = prompt }],\n    System = settings.SystemPrompt, Tools = []\n};\nvar timer = Stopwatch.StartNew();"
+  },
+  {
+    "number": 7,
+    "title": "Project safe text delta",
+    "source": "backend/ClaudeAgentRunner.cs",
+    "line": 50,
+    "language": "csharp",
+    "text": "Allowlist text instead of forwarding raw SDK objects.",
+    "explanation": "Streaming redaction retains possible key prefixes between chunks, preventing the configured key leaking when split across provider deltas.",
+    "code": "    var safeText = StreamText(ref pendingText, text);\n    if (safeText.Length > 0) yield return new(\"TextDelta\", \"Answer text received\", new { text = safeText });\n}"
+  },
+  {
+    "number": 8,
+    "title": "Write UTF-8 SSE event",
+    "source": "backend/AgentEndpoints.cs",
+    "line": 99,
+    "language": "csharp",
+    "text": "Serialize and flush each application event.",
+    "explanation": "The server awaits writes, sends heartbeat comments and bounds execution with linked request, invocation and deadline cancellation.",
+    "code": "async Task SendEvent(string name, object data) {\n    await context.Response.WriteAsync($\"event: {name}\\ndata: {JsonSerializer.Serialize(data, Contracts.Json)}\\n\\n\", context.RequestAborted);\n    await context.Response.Body.FlushAsync(context.RequestAborted);\n}"
+  },
+  {
+    "number": 9,
+    "title": "Update React answer and timeline",
+    "source": "frontend/src/AgentApp.tsx",
+    "line": 71,
+    "language": "typescript",
+    "text": "Update incremental answer text separately from final result.",
+    "explanation": "Visible history caps at 500 events while final result processing continues; tab navigation keeps the mounted lab state.",
+    "code": "if (message.type === 'TextDelta' && 'text' in message.data && typeof message.data.text === 'string') {\n  const delta = message.data.text;\n  setPartial(text => text + delta);\n}"
+  },
+  {
+    "number": 10,
+    "title": "Aggregate result and usage",
+    "source": "backend/ClaudeAgentRunner.cs",
+    "line": 62,
+    "language": "csharp",
+    "text": "Collect final text, token usage, duration and stop reason.",
+    "explanation": "num_turns=1 denotes one model request. Cost remains null; a max_tokens stop is an error state even when partial text exists.",
+    "code": "    var result = new AgentResult(Redact(answer.ToString()), 1, timer.ElapsedMilliseconds, inputTokens, outputTokens,\n        stopReason, stopReason is not (\"end_turn\" or \"stop_sequence\"));\n    yield return new(\"ResultMessage\", result.IsError ? \"Response stopped early\" : \"Response complete\", result);\n}"
+  },
+  {
+    "number": 11,
+    "title": "Dispatch final result",
+    "source": "frontend/src/api.ts",
+    "line": 67,
+    "language": "typescript",
+    "text": "Validate application projections before dispatch.",
+    "explanation": "ResultMessage is our public contract, not the name of an official C# SDK class. Unknown or malformed messages are rejected.",
+    "code": "  if (event === 'message') { const message = messageFrom(data); if (message.type === 'ResultMessage') finalReceived = true; onMessage(message); }\n});"
+  },
+  {
+    "number": 12,
+    "title": "Render safe highlighted Markdown",
+    "source": "frontend/src/code.ts",
+    "line": 22,
+    "language": "typescript",
+    "text": "Sanitize all generated answer HTML.",
+    "explanation": "Markdown code fences use Highlight.js; DOMPurify then removes active markup. Unknown languages display escaped plain text.",
+    "code": "export function renderMarkdown(text: string): string {\n  if (typeof window === 'undefined') return '';\n  return DOMPurify.sanitize(markdown.parse(text, { async: false }));\n}"
+  },
+  {
+    "number": 13,
+    "title": "Complete final result plus done",
+    "source": "backend/AgentEndpoints.cs",
+    "line": 132,
+    "language": "csharp",
+    "text": "Require a final result before sending transport completion.",
+    "explanation": "React also requires final plus done. The final is_error flag still determines model success.",
+    "code": "    if (!foundResult) throw new InvalidOperationException(\"Missing result.\");\n    await SendEvent(\"done\", new { status = \"complete\" });\n}"
+  },
+  {
+    "number": 14,
+    "title": "Emit safe stream error",
+    "source": "backend/AgentEndpoints.cs",
+    "line": 138,
+    "language": "csharp",
+    "text": "Send an error without done when the provider or deadline fails.",
+    "explanation": "Public failures omit raw exceptions, credentials and prompts. Client or host cancellation aborts owned work and disposes the iterator.",
+    "code": "if (!context.RequestAborted.IsCancellationRequested && !invocationToken.IsCancellationRequested)\n    await SendEvent(\"error\", new { detail = deadline.IsCancellationRequested ? \"The request timed out. Try a shorter prompt.\" : Contracts.Failure });"
+  },
+  {
+    "number": 15,
+    "title": "Show recoverable browser error",
+    "source": "frontend/src/AgentApp.tsx",
+    "line": 85,
+    "language": "typescript",
+    "text": "Display failure in the answer card and notification.",
+    "explanation": "Users can correct server configuration and retry. Cancel aborts fetch and stops the client run; no automatic duplicate paid requests are made.",
+    "code": "    setError(message); setNotice(message); setState('error');\n  }\n} finally {"
+  },
+  {
+    "number": 16,
+    "title": "Reject missing key before inference",
+    "source": "backend/AgentEndpoints.cs",
+    "line": 103,
+    "language": "csharp",
+    "text": "Reject missing configuration before entering the SDK.",
+    "explanation": "Simple mode returns HTTP 503; stream mode sends error without done. Lessons and documentation remain available locally without credentials.",
+    "code": "if (!settings.Configured) { await SendEvent(\"error\", new { detail = Contracts.MissingKey }); return; }\nusing var deadline = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted, invocationToken);"
+  }
+]

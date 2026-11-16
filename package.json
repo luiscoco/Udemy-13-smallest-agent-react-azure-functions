@@ -1,0 +1,30 @@
+{
+  "name": "smallest-agent-react-azure-functions",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "frontend"
+  ],
+  "engines": {
+    "node": ">=24.15.0"
+  },
+  "scripts": {
+    "dev": "node scripts/start-dev.mjs",
+    "dev:frontend": "npm run dev --workspace frontend",
+    "dev:backend": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Start-Functions.ps1",
+    "dev:storage": "azurite --silent --location .tools/azurite --skipApiVersionCheck",
+    "generate:lesson": "node scripts/generate-lesson.mjs",
+    "build": "npm run generate:lesson && dotnet build backend/SmallestAgent.Functions.csproj -c Release && npm run build --workspace frontend",
+    "typecheck": "npm run typecheck --workspace frontend",
+    "test": "npm run test --workspace frontend && dotnet run --project tests/SmallestAgent.Checks",
+    "publish:backend": "dotnet publish backend/SmallestAgent.Functions.csproj -c Release -o artifacts/functions",
+    "verify:http": "node scripts/verify-http.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.0",
+    "azure-functions-core-tools": "4.16.0",
+    "azurite": "3.37.0",
+    "concurrently": "10.0.7"
+  }
+}

@@ -1,0 +1,31 @@
+@startuml
+skinparam backgroundColor #F8FBFF
+skinparam defaultFontSize 18
+participant "Student / Browser" as Browser
+participant "React client" as React
+participant "Azure Functions" as Functions
+participant "C# Messages SDK" as Sdk
+participant "Claude API" as Claude
+Browser -> React : 1. Run prompt
+React -> Functions : 2. POST /api/agent/stream
+Functions -> Functions : 3. Validate bounded JSON input
+Functions -> Sdk : 4. Delegate HTTP trigger
+Sdk -> Claude : 5. Create streaming model request
+Claude -> Sdk : 6. Receive SDK stream chunks
+loop streamed text and application updates
+Sdk -> Functions : 7. Project safe text delta
+Functions -> React : 8. Write UTF-8 SSE event
+React -> React : 9. Update React answer and timeline
+end
+alt complete
+Sdk -> Functions : 10. Aggregate result and usage
+React -> React : 11. Dispatch final result
+React -> Browser : 12. Render safe highlighted Markdown
+Functions -> React : 13. Complete final result plus done
+else failure
+Functions -> React : 14. Emit safe stream error
+React -> Browser : 15. Show recoverable browser error
+else missing key or invalid input
+Functions -> React : 16. Reject missing key before inference
+end
+@enduml
